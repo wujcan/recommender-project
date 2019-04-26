@@ -22,27 +22,22 @@ class FM(object):
         # Sparse placeholder definition
         self.user_list = tf.placeholder(tf.int64, shape=[None], name='user_list')
 
-        self.pos_indices = tf.placeholder(tf.int64, shape=[None, 2], name='pos_indices')
-        self.pos_values = tf.placeholder(tf.float32, shape=[None], name='pos_values')
-        self.pos_shape = tf.placeholder(tf.int64, shape=[2], name='pos_shape')
-
-        self.neg_indices = tf.placeholder(tf.int64, shape=[None, 2], name='neg_indices')
-        self.neg_values = tf.placeholder(tf.float32, shape=[None], name='neg_values')
-        self.neg_shape = tf.placeholder(tf.int64, shape=[2], name='neg_shape')
+        self.sp_indices = tf.placeholder(tf.int64, shape=[None, 2], name='sp_indices')
+        self.sp_values = tf.placeholder(tf.float32, shape=[None], name='sp_values')
+        self.sp_shape = tf.placeholder(tf.int64, shape=[2], name='sp_shape')
+        self.sp_labels = tf.placeholder(tf.float32, shape=[None], name='sp_labels')
 
         # Input positive features, shape=(batch_size * feature_dim)
-        sparse_pos_feats = tf.SparseTensor(self.pos_indices, self.pos_values, self.pos_shape)
-        # Input negative features, shape=(batch_size * feature_dim)
-        sparse_neg_feats = tf.SparseTensor(self.neg_indices, self.neg_values, self.neg_shape)
+        sp_feats = tf.SparseTensor(self.sp_indices, self.sp_values, self.sp_shape)
 
         self.weights = self._init_weights()
 
         # All predictions for all users.
-        self.batch_predictions = self._create_bi_predictions(sparse_pos_feats)
+        self.batch_predictions = self._create_bi_predictions(sp_feats)
 
-        self.bpr_loss, self.reg_loss = self._create_bpr_loss(sparse_pos_feats, sparse_neg_feats)
+        self.log_loss, self.reg_loss = self._create_log_loss(sp_feats)
 
-        self.loss = self.bpr_loss + self.reg_loss
+        self.loss = self.log_loss + self.reg_loss
 
         # self.opt = tf.train.RMSPropOptimizer(learning_rate=self.lr).minimize(self.loss)
         self.opt = tf.train.AdamOptimizer(learning_rate=self.lr).minimize(self.loss)
@@ -66,32 +61,16 @@ class FM(object):
             print('using pretrained initialization')
         return all_weights
 
-    def _create_bpr_loss(self, sparse_pos_feats, sparse_neg_feats):
-        pos_preds = self._create_bi_predictions(sparse_pos_feats)
-        neg_preds = self._create_bi_predictions(sparse_neg_feats)
+    def _create_log_loss(self, sp_feats):
+        self.preds = self._create_bi_predictions(sp_feats)
 
-        # reg_loss = self.regs[0] * (tf.nn.l2_loss(pos_emb) + tf.nn.l2_loss(neg_emb))
+        log_loss = tf.reduce_mean(tf.losses.log_loss(labels=tf.reshape(self.sp_labels, [-1]),
+                                      predictions=tf.reshape(self.preds, [-1])))
 
         reg_loss = self.regs[0] * tf.nn.l2_loss(self.weights['var_linear']) + \
                       self.regs[1] * tf.nn.l2_loss(self.weights['var_factor'])
 
-        maxi = tf.log(1e-15 + tf.nn.sigmoid(pos_preds - neg_preds))
-        bpr_loss = tf.negative(tf.reduce_mean(maxi))
-
-        return bpr_loss, reg_loss
-
-    def _create_fm_predictions(self, feats):
-        # Linear terms.
-        term0 = tf.sparse_tensor_dense_matmul(feats, self.weights['var_linear'])
-
-        # Interaction terms.
-        emb_mul = tf.sparse_tensor_dense_matmul(feats, self.weights['var_factor'])
-        term1 = tf.square(tf.reduce_sum(emb_mul, axis=1, keepdims=True))
-        term2 = tf.reduce_sum(tf.square(emb_mul), axis=1, keepdims=True)
-        # preds = term0 + 0.5 * (term1 - term2)
-        preds = 0.5 * (term1 - term2)
-
-        return preds, emb_mul
+        return log_loss, reg_loss
 
     def _create_bi_predictions(self, feats):
         # Linear terms.
@@ -106,10 +85,9 @@ class FM(object):
         square_emb = tf.sparse_tensor_dense_matmul(tf.square(feats), tf.square(self.weights['var_factor']))
         term2 = tf.reduce_sum(square_emb, axis=1, keepdims=True)
 
-        preds = term0 + 0.5 * (term1 - term2)
+        preds = tf.sigmoid(term0 + 0.5 * (term1 - term2))
 
         return preds
-
 
     def _statistics_params(self):
         # number of params
@@ -122,8 +100,3 @@ class FM(object):
             total_parameters += variable_parameters
         if self.verbose > 0:
             print("#params: %d" % total_parameters)
-
-
-
-
-

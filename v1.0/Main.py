@@ -1,30 +1,22 @@
 #!/usr/local/bin/bash
 import numpy as np
 import tensorflow as tf
-from utility.load_data3 import Data
+from utility.load_data import Data
 from utility.helper import *
 from utility.parser import parse_args
-from utility.batch_test5 import Tester
-import utility.metrics as metrics
+from utility.batch_test import Tester
 from time import time
-import scipy.sparse as sp
-from FM_pro import FM
-from MF import MF
-from DEPFM import DEPFM
-from TransFM import TransFM
-from TransDEPFM import TransDEPFM
-
-
+from FM import FM
 import os
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
 
 def load_pretrained_data(args):
-    pretrain_path = '%spretrain/%s/%s.npz' % (args.proj_path, args.dataset, 'fm')
+    pretrain_path = '%spretrain/%s/%s.npz' % (args.proj_path, args.dataset, args.model_type)
     try:
         pretrain_data = np.load(pretrain_path)
-        print('load the pretrained bprmf model parameters.')
+        print('load the pretrained model parameters.')
     except Exception:
         pretrain_data = None
     return pretrain_data
@@ -55,24 +47,13 @@ if __name__ == '__main__':
     # get argument settings.
     args = parse_args()
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
     # get data generator.
-    data_generator = Data(path=args.data_path + args.dataset)
+    data_generator = Data(path=args.proj_path + args.data_path + args.dataset)
 
     config = dict()
     config['n_features'] = data_generator.n_features
     config['n_users'] = data_generator.n_users
     config['n_items'] = data_generator.n_items
-
-    if args.model_type in ['depfm', 'transdepfm']:
-        bi_adj, si_adj = data_generator.get_adj_mat()
-        if args.adj_type == 'bi':
-            config['norm_adj'] = bi_adj
-            print('use the bilinear adjacency matrix')
-
-        elif args.adj_type == 'si':
-            config['norm_adj'] = si_adj
-            print('use the single adjacency matrix')
 
     t0 = time()
 
@@ -83,32 +64,15 @@ if __name__ == '__main__':
         pretrain_data = None
 
     # *********************************************************
-    # select one of the models.
-    if args.model_type == 'fm':
-        model = FM(data_config=config, pretrain_data=pretrain_data, args=args)
-    elif args.model_type == 'mf':
-        model = MF(data_config=config, pretrain_data=pretrain_data, args=args)
-    elif args.model_type == 'depfm':
-        model = DEPFM(data_config=config, pretrain_data=pretrain_data, args=args)
-    elif args.model_type == 'transfm':
-        model = TransFM(data_config=config, pretrain_data=pretrain_data, args=args)
-    elif args.model_type == 'transdepfm':
-        model = TransDEPFM(data_config=config, pretrain_data=pretrain_data, args=args)
-
-
+    # init FM model
+    model = FM(data_config=config, pretrain_data=pretrain_data, args=args)
     saver = tf.train.Saver()
 
     # *********************************************************
     # save the model parameters.
     if args.save_flag == 1:
-        if args.model_type in ['mf', 'fm']:
-            weights_save_path = '%sweights/%s/%s/l%s_r%s' % (args.proj_path, args.dataset, model.model_type, str(args.lr),
-                                                             '-'.join([str(r) for r in eval(args.regs)]))
-        elif args.model_type in ['depfm', 'nfm', 'transfm', 'deepfm', 'transdepfm']:
-            layer = '-'.join([str(l) for l in eval(args.layer_size)])
-            weights_save_path = '%sweights/%s/%s/%s/l%s_r%s' % (
-                args.weights_path, args.dataset, model.model_type, layer, str(args.lr), '-'.join([str(r) for r in eval(args.regs)]))
-
+        weights_save_path = '%sweights/%s/%s/l%s_r%s' % (args.proj_path, args.dataset, model.model_type, str(args.lr),
+                                                         '-'.join([str(r) for r in eval(args.regs)]))
         ensureDir(weights_save_path)
         save_saver = tf.train.Saver(max_to_keep=1)
 
@@ -116,19 +80,14 @@ if __name__ == '__main__':
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
-    tester = Tester(args=args, data_generator=data_generator)
+    tester = Tester(args=args, data_generator=data_generator, path=args.proj_path + args.data_path + args.dataset)
 
     # *********************************************************
     # reload the model parameters to fine tune.
     if args.pretrain == 1:
-        if args.model_type in ['mf', 'fm']:
-            pretrain_path = '%sweights/%s/%s/l%s_r%s' % (args.proj_path, args.dataset, model.model_type, str(args.lr),
-                                                             '-'.join([str(r) for r in eval(args.regs)]))
-        elif args.model_type in ['depfm', 'nfm', 'transfm', 'deepfm', 'transdepfm']:
-            layer = '-'.join([str(l) for l in eval(args.layer_size)])
-            pretrain_path = '%sweights/%s/%s/%s/l%s_r%s' % (
-                args.weights_path, args.dataset, model.model_type, layer, str(args.lr), '-'.join([str(r) for r in eval(args.regs)]))
-
+        pretrain_path = '%sweights/%s/%s/l%s_r%s' % \
+                        (args.proj_path, args.dataset, model.model_type, str(args.lr),
+                         '-'.join([str(r) for r in eval(args.regs)]))
 
         ckpt = tf.train.get_checkpoint_state(os.path.dirname(pretrain_path + '/checkpoint'))
         if ckpt and ckpt.model_checkpoint_path:
@@ -139,9 +98,7 @@ if __name__ == '__main__':
             # *********************************************************
             # get the performance from the model to fine tune.
             if args.report != 1:
-                users_to_test = list(data_generator.test_set.keys())
-
-                ret = tester.test(sess, model, users_to_test, drop_flag=False)
+                ret = tester.test(sess, model, drop_flag=False)
                 cur_best_WF1 = ret['WF1']
 
                 pretrain_ret = 'pretrained model WF1=[%.5f]' % \
@@ -175,10 +132,6 @@ if __name__ == '__main__':
     # get the final report, as well as the performance w.r.t. different sparsity.
     if args.report == 1:
         assert args.test_flag == 'full'
-        users_to_test_list, split_state = data_generator.get_sparsity_split()
-
-        users_to_test_list.append(list(data_generator.test_set.keys()))
-        split_state.append('all')
 
         save_path = '%sreport/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
         ensureDir(save_path)
@@ -186,14 +139,13 @@ if __name__ == '__main__':
         f.write('embed_size=%d, lr=%.4f, regs=%s, loss_type=%s, \n' % (args.embed_size, args.lr, args.regs,
                                                                        args.loss_type))
 
-        for i, users_to_test in enumerate(users_to_test_list):
-            ret = tester.test(sess, model, users_to_test, drop_flag=False)
+        ret = tester.test(sess, model, drop_flag=False)
 
-            final_perf = "WF1=[%.5f]" % \
-                         (ret['WF1'])
-            print(final_perf)
+        final_perf = "WF1=[%.5f]" % \
+                     (ret['WF1'])
+        print(final_perf)
 
-            f.write('\t%s\n\t%s\n' % (split_state[i], final_perf))
+        f.write('\t%s\n\t%s\n' % (split_state[i], final_perf))
         f.close()
         exit()
 
@@ -208,24 +160,16 @@ if __name__ == '__main__':
 
         for idx in range(n_batch):
             btime = time()
-            (users, items, feats, sp_labels) = data_generator.generate_sp_train_batch(args.batch_size)
 
+            (users, items, feats, sp_labels) = data_generator.generate_sp_train_batch(args.batch_size)
             sp_indices, sp_values, sp_shape = merge2feats(feats)
 
-            if args.model_type in ['fm', 'depfm', 'transfm', 'nfm', 'deepfm', 'transdepfm']:
-                feed_dict = {model.user_list: users.nonzero()[1],
-
-                             model.sp_indices: sp_indices,
-                             model.sp_values: sp_values,
-                             model.sp_shape: sp_shape,
-                             model.sp_labels: sp_labels
-                             }
-            elif args.model_type in ['mf']:
-                feed_dict = {model.user_list: np.concatenate((users.nonzero()[1], users.nonzero()[1])),
-                             model.item_list: np.concatenate((pos_items.nonzero()[1], neg_items.nonzero()[1])),
-
-                             model.sp_labels: sp_labels
-                             }
+            feed_dict = {model.user_list: users.nonzero()[1],
+                         model.sp_indices: sp_indices,
+                         model.sp_values: sp_values,
+                         model.sp_shape: sp_shape,
+                         model.sp_labels: sp_labels
+                         }
 
             _, batch_loss, batch_log_loss, batch_reg_loss, batch_preds = sess.run(
                 [model.opt, model.loss, model.log_loss, model.reg_loss, model.preds],
@@ -235,18 +179,12 @@ if __name__ == '__main__':
             loss += batch_loss / n_batch
             log_loss += batch_log_loss / n_batch
             reg_loss += batch_reg_loss / n_batch
-            # print(time() - btime, batch_loss, batch_log_loss, batch_reg_loss)
-            #
-            # print('\n')
-            # print(batch_preds)
-            # print(metrics.auc(sp_labels, batch_preds))
-            # exit()
 
         if np.isnan(loss) == True:
             print('ERROR: loss is nan.')
             sys.exit()
 
-        # print the test evaluation metrics each 10 epochs; pos:neg = 1:10.
+        # print the test evaluation metrics each 10 epochs.
         # if (epoch + 1) % 10 != 0:
         if (epoch + 1) % 2 != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
@@ -256,8 +194,7 @@ if __name__ == '__main__':
             continue
 
         t2 = time()
-        # users_to_test = list(data_generator.test_set.keys())
-        # ret = tester.test(sess, model, users_to_test, drop_flag=False)
+
         ret = tester.test(sess, model, drop_flag=False, phase='Validation')
 
         t3 = time()

@@ -1,0 +1,2 @@
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[5]@[50.6]	WF1=[0.21871]
