@@ -5,12 +5,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run GAT.")
     parser.add_argument('--weights_path', nargs='?', default='',
                         help='Input data path.')
-    parser.add_argument('--data_path', nargs='?', default='D:\PycharmProjects\kdd cup/v1.0\Data/',
+    parser.add_argument('--data_path', nargs='?', default='D:\PycharmProjects\\recommender-project\\v1.0\Data\\',
                         help='Input data path.')
     parser.add_argument('--proj_path', nargs='?', default='',
                         help='Input data path.')
 
-    parser.add_argument('--dataset', nargs='?', default='kdd_cup',
+    parser.add_argument('--dataset', nargs='?', default='debug\\',
                         help='Choose a dataset.')
     parser.add_argument('--pretrain', type=int, default=0,
                         help='0: No pretrain, 1: Pretrain with updating FISM variables, 2:Pretrain with fixed FISM variables.')

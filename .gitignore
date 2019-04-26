@@ -1,1 +1,4 @@
 v1.0/Data
+*.log
+*.temp
+v1.0/.idea/
