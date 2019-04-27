@@ -60,7 +60,6 @@ class Data(object):
         self.n_feats += 1
 
     def get_identity_mat(self):
-        self.user_one_hot = sp.identity(self.n_users).tocsr()
         self.item_one_hot = sp.identity(self.n_items).tocsr()
 
     def get_interaction_mat(self, train_file, valid_file, test_file):
@@ -113,13 +112,11 @@ class Data(object):
 
             idx = np.random.randint(low=0, high=len(self.sp_train.row), size=1)[0]
             instance_idx.append(idx)
-        # get the indices of users, positive items, and negative items.
-        user_idx = self.sp_train.row[instance_idx]
+        # get the indices of items, feats and labels.
         label_idx = self.sp_train.row[instance_idx]
         feat_row_idx = self.sp_train.row[instance_idx]
         item_idx = self.sp_train.col[instance_idx]
         # Convert from indices to one-hot matrices
-        users = self.user_one_hot[user_idx]
         items = self.item_one_hot[item_idx]
         # get feature batch
         feat = []
@@ -135,7 +132,7 @@ class Data(object):
         labels = label_array[label_idx]
         labels = labels[:, 1]
 
-        return (users, items, feats, labels)
+        return (items, feats, labels)
 
     def get_n_features(self):
         print('[n_train, n_valid, n_test]=[%d, %d, %d]' %

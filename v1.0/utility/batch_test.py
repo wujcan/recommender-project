@@ -12,8 +12,9 @@ class Tester(object):
 
         self.model_type = args.model_type
 
+        self.dataset = args.dataset
+
         self.batch_size = args.batch_size
-        self.test_flag = args.test_flag
 
         self.data_generator = data_generator
         self.n_features = data_generator.n_features
@@ -32,23 +33,12 @@ class Tester(object):
 
         self.cores = multiprocessing.cpu_count()
 
-    def pack_batch_feats(self, u_batch, i_batch, feats_batch):
+    def pack_batch_feats(self, i_batch, feats_batch):
         # Horizontally stack sparse matrices to get single feature matrices w.r.t. user-item interactions.
-        users = self.data_generator.user_one_hot[u_batch]
-
         items = self.data_generator.item_one_hot[i_batch]
         feat_batch = sp.hstack([items, feats_batch])
 
-        return (users, feat_batch)
-
-    def create_feed_dict(self, placeholder, users, feats):
-        feed_dict = {
-            placeholder['user_list']: users.nonzero()[1],
-            placeholder['pos_indices']: np.hstack((feats.nonzero()[0][:, None], feats.nonzero()[1][:, None])),
-            placeholder['pos_values']: feats.data,
-            placeholder['pos_shape']: feats.shape,
-        }
-        return feed_dict
+        return feat_batch
 
     def test(self, sess, model, drop_flag=False, phase='Validation'):
         result = {'WF1': 0.}
@@ -76,19 +66,15 @@ class Tester(object):
                     else:
                         feat = sp.vstack([feat, feat_mat])
 
-                (user_list, feat_batch) = self.pack_batch_feats(user_batch, item_batch, feat)
+                feat_batch = self.pack_batch_feats(item_batch, feat)
 
-                feed_dict = {model.user_list: user_list.nonzero()[1],
-                             model.sp_indices: np.hstack(
+                feed_dict = {model.sp_indices: np.hstack(
                                  (feat_batch.nonzero()[0][:, None], feat_batch.nonzero()[1][:, None])),
                              model.sp_values: feat_batch.data,
                              model.sp_shape: feat_batch.shape,
                              }
 
-                if drop_flag == False:
-                    pred_batch = sess.run(model.batch_predictions, feed_dict=feed_dict)
-                else:
-                    pred_batch = sess.run(model.batch_predictions, feed_dict=feed_dict)
+                pred_batch = sess.run(model.batch_predictions, feed_dict=feed_dict)
                 index = user_batch
                 preds[start: end] = np.array(pred_batch).reshape(-1)
                 for i in range(len(index)):
@@ -97,10 +83,12 @@ class Tester(object):
         if phase == 'Validation':
             index2sid = self.path + "/index_to_sid_validset.data"
             index2mode = self.path + "/valid.data"
+            file_valid_queries = self.path + '/valid_queries.csv'
         else:
             index2sid = self.path + "/index_to_sid_test.data"
             index2mode = self.path + "/test.data"
             savefile = self.path + "/predict.csv"
+            file_test_queries = self.path + '/test_queries.csv'
 
         findex2sid = open(index2sid)
         findex2mode = open(index2mode)
@@ -111,7 +99,7 @@ class Tester(object):
         for line in findex2mode:
             line = line.split(',')
             dictindex[line[0]].append(line[1])
-            dictindex[line[0]].append(line[2])
+            dictindex[line[0]].append(str(int(line[2]) - 1))
 
         if phase == 'Validation':
             test_part(self.sp_valid, self.feat_valid)
@@ -121,11 +109,11 @@ class Tester(object):
         dictind = [item[1] for item in list(dictindex.items())]
         df = pd.DataFrame(data=dictind)
         df.columns = ['sid', 'label', 'transport_mode', 'predict']
+        df['sid'] = df['sid'].astype('int')
+        df['transport_mode'] = df['transport_mode'].astype('int')
 
         if phase == 'Validation':
             df['label'] = df['label'].astype('int')
-            df['transport_mode'] = df['transport_mode'].astype('int')
-            df['transport_mode'] -= 1
             df['click_mode'] = df['label'] * df['transport_mode']
             # find click mode for each sid
             res1_idx = df.groupby(['sid'], sort=False)['click_mode'].transform(max) == df['click_mode']
@@ -138,9 +126,15 @@ class Tester(object):
             df_result.rename(columns={'transport_mode': 'recommend_mode'}, inplace=True)
             df_predict = df_result[['sid', 'recommend_mode']]
             df_click = df_click_mode[['sid', 'click_mode']]
-            df_final = pd.merge(df_click, df_predict, how='left')
-            score = f1_score(df_final['recommend_mode'], df_final['click_mode'], average='weighted')
-            result['WF1'] = score
+            df_valid_queries = pd.read_csv(file_valid_queries)
+            df_valid_queries = df_valid_queries['sid']
+            df_click_all = pd.merge(df_valid_queries, df_click, how='left')
+            df_click_all.fillna(0, inplace=True)
+            df_final = pd.merge(df_click_all, df_predict, how='left')
+            df_final.fillna(0, inplace=True)
+            if self.dataset == 'debug':
+                df_final = df_final.head(1200)
+            result['WF1'] = f1_score(df_final['recommend_mode'], df_final['click_mode'], average='weighted')
 
             return result
 
@@ -148,6 +142,12 @@ class Tester(object):
             # get recommend mode
             result_idx = df.groupby(['sid'], sort=False)['predict'].transform(max) == df['predict']
             df_result = df[result_idx]
+            df_result.drop_duplicates('sid', inplace=True)
             df_result.rename(columns={'transport_mode': 'recommend_mode'}, inplace=True)
-            df_final = df_result[['sid', 'recommend_mode']]
+            df_test_queries = pd.read_csv(file_test_queries)
+            df_tmp = df_result[['sid', 'recommend_mode']]
+            df_final = pd.merge(df_test_queries, df_tmp, how='left')
+            df_final = df_final[['sid', 'recommend_mode']]
+            df_final.fillna(0, inplace=True)
+            df_final['recommend_mode'] = df_final['recommend_mode'].astype('int')
             df_final.to_csv(savefile, index=False)

@@ -21,26 +21,13 @@ def load_pretrained_data(args):
         pretrain_data = None
     return pretrain_data
 
-def create_feed_dict(placeholder, users, feats):
-    feed_dict = {
-        placeholder['user_list']: users.nonzero()[1],
-        placeholder['pos_indices']: np.hstack((feats.nonzero()[0][:, None], feats.nonzero()[1][:, None])),
-        placeholder['pos_values']: feats.data,
-        placeholder['pos_shape']: feats.shape,
-    }
-    return feed_dict
 
-def merge2feats(feats):
-    # all_feats = sp.vstack((pos_feats, neg_feats))
-
+def genSparseTensor(feats):
     sp_indices = np.hstack((feats.nonzero()[0][:, None], feats.nonzero()[1][:, None]))
     sp_values = feats.data
     sp_shape = feats.shape
-
-    # sp_labels = np.concatenate((np.ones(shape=(pos_feats.shape[0])),
-    #                             np.zeros(shape=(neg_feats.shape[0]))), axis=0)
-
     return sp_indices, sp_values, sp_shape
+
 
 if __name__ == '__main__':
     np.random.seed(2019)
@@ -131,7 +118,6 @@ if __name__ == '__main__':
 
     # get the final report, as well as the performance w.r.t. different sparsity.
     if args.report == 1:
-        assert args.test_flag == 'full'
 
         save_path = '%sreport/%s/%s.result' % (args.proj_path, args.dataset, model.model_type)
         ensureDir(save_path)
@@ -157,15 +143,12 @@ if __name__ == '__main__':
         t1 = time()
         loss, log_loss, reg_loss = 0., 0., 0.
         n_batch = data_generator.n_train // args.batch_size + 1
-
+        t11 = time()
         for idx in range(n_batch):
-            btime = time()
+            (items, feats, sp_labels) = data_generator.generate_sp_train_batch(args.batch_size)
+            sp_indices, sp_values, sp_shape = genSparseTensor(feats)
 
-            (users, items, feats, sp_labels) = data_generator.generate_sp_train_batch(args.batch_size)
-            sp_indices, sp_values, sp_shape = merge2feats(feats)
-
-            feed_dict = {model.user_list: users.nonzero()[1],
-                         model.sp_indices: sp_indices,
+            feed_dict = {model.sp_indices: sp_indices,
                          model.sp_values: sp_values,
                          model.sp_shape: sp_shape,
                          model.sp_labels: sp_labels
@@ -180,13 +163,18 @@ if __name__ == '__main__':
             log_loss += batch_log_loss / n_batch
             reg_loss += batch_reg_loss / n_batch
 
+        print('time for training each batch [%.1f s].' % ((time() - t1) / n_batch))
+
         if np.isnan(loss) == True:
             print('ERROR: loss is nan.')
             sys.exit()
 
+        if args.dataset == 'debug':
+            test_intetval = 5
+        else:
+            test_intetval = 10
         # print the test evaluation metrics each 10 epochs.
-        # if (epoch + 1) % 10 != 0:
-        if (epoch + 1) % 2 != 0:
+        if (epoch + 1) % test_intetval != 0:
             if args.verbose > 0 and epoch % args.verbose == 0:
                 perf_str = 'Epoch %d [%.1fs]: train==[%.5f=%.5f + %.5f]' % (
                 epoch, time() - t1, loss, log_loss, reg_loss)

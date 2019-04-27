@@ -1,2 +1,14 @@
 embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
 	Best Iter=[5]@[50.6]	WF1=[0.21871]
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[3]@[37.0]	WF1=[0.19665]
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[15]@[87.9]	WF1=[0.24915]
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[0]@[24.4]	WF1=[0.22406]
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[9]@[117.2]	WF1=[0.26185]
+embed_size=64, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[11]@[160.4]	WF1=[0.27083]
+embed_size=128, lr=0.0001, regs=[1e-5,1e-5,1e-2], loss_type=log_loss, 
+	Best Iter=[17]@[167.7]	WF1=[0.32443]

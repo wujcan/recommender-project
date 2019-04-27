@@ -3,6 +3,7 @@ import tensorflow as tf
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
+
 class FM(object):
     def __init__(self, data_config, pretrain_data, args):
         self.model_type = 'fm'
@@ -20,8 +21,6 @@ class FM(object):
         self.verbose = args.verbose
 
         # Sparse placeholder definition
-        self.user_list = tf.placeholder(tf.int64, shape=[None], name='user_list')
-
         self.sp_indices = tf.placeholder(tf.int64, shape=[None, 2], name='sp_indices')
         self.sp_values = tf.placeholder(tf.float32, shape=[None], name='sp_values')
         self.sp_shape = tf.placeholder(tf.int64, shape=[2], name='sp_shape')

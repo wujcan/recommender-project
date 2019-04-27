@@ -43,8 +43,6 @@ def parse_args():
                         help='Learning rate.')
     parser.add_argument('--pre_regs', nargs='?', default='[1e-5,1e-5,1e-2]',
                         help='Regularization for user and item embeddings.')
-    parser.add_argument('--test_flag', nargs='?', default='part',
-                        help='Specify a loss type (org, norm, or mean).')
     parser.add_argument('--report', type=int, default=0,
                         help='0: No pretrain, 1: Pretrain with updating FISM variables, 2:Pretrain with fixed FISM variables.')
     return parser.parse_args()
